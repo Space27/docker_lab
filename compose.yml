@@ -8,8 +8,15 @@ services:
       - "8091:8091"
     networks:
       - backend
+    healthcheck:
+      test: nc -z localhost 8090 || exit -1
+      start_period: 10s
+      interval: 2s
+      timeout: 5s
+      retries: 10
     depends_on:
-      - scrapper
+      scrapper:
+        condition: service_healthy
 
   scrapper:
     image: ghcr.io/space27/javabackendspring/scrapper:master
@@ -20,9 +27,15 @@ services:
       - backend
     environment:
       DATABASE_ACCESS_TYPE: jooq
+    healthcheck:
+      test: nc -z localhost 8080 || exit -1
+      start_period: 10s
+      interval: 2s
+      timeout: 5s
+      retries: 10
     depends_on:
-      - postgresql
-      - liquibase-migrations
+      liquibase-migrations:
+        condition: service_completed_successfully
 
   files:
     image: ghcr.io/space27/javabackendspring/scrapper:master
@@ -42,12 +55,17 @@ services:
       - postgresql:/var/lib/postgresql/data
     networks:
       - backend
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready", "--quiet" ]
+      interval: 1s
+      timeout: 5s
+      retries: 10
 
   liquibase-migrations:
     image: liquibase/liquibase:4.25
     depends_on:
-      - postgresql
-    restart: on-failure
+      postgresql:
+        condition: service_healthy
     command:
       - --changelog-file=master.xml
       - --driver=org.postgresql.Driver
@@ -98,6 +116,12 @@ services:
       KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "true"
     volumes:
       - kafka1:/var/lib/kafka/data
+    healthcheck:
+      test: nc -z localhost 9092 || exit -1
+      start_period: 5s
+      interval: 1s
+      timeout: 5s
+      retries: 10
     depends_on:
       - zoo
 
@@ -114,8 +138,15 @@ services:
       - grafana_storage:/var/lib/grafana
     networks:
       - backend
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/login || exit 1" ]
+      start_period: 2s
+      interval: 2s
+      timeout: 5s
+      retries: 10
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
 
   prometheus:
     image: prom/prometheus:v2.51.0
@@ -128,6 +159,12 @@ services:
       - prometheus:/prometheus
     networks:
       - backend
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:9090 || exit 1" ]
+      start_period: 2s
+      interval: 2s
+      timeout: 5s
+      retries: 10
 
 volumes:
   postgresql: { }
